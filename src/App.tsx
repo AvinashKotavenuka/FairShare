@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { 
-  Plus, Users, DollarSign, ArrowRight, CheckCircle, 
-  RefreshCw, ChevronRight, Home, User as UserIcon, Activity, 
+import { FirebaseService } from './services/firebaseService';
+import {
+  Plus, Users, DollarSign, ArrowRight, CheckCircle,
+  RefreshCw, ChevronRight, Home, User as UserIcon, Activity,
   Settings, Search, Filter, Tag, PieChart as PieChartIcon, LogOut,
   Bell, CreditCard, Wallet, TrendingUp, TrendingDown,
   Mail, Hash, Moon, Sun, Camera, Globe, Repeat, MessageSquare,
@@ -10,15 +11,15 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Decimal } from 'decimal.js';
-import { 
-  PieChart, Pie, Cell, ResponsiveContainer, 
+import {
+  PieChart, Pie, Cell, ResponsiveContainer,
   BarChart, Bar, XAxis, YAxis, Tooltip, Legend,
   LineChart, Line
 } from 'recharts';
 
 // Types
 interface User {
-  id: number;
+  id: string;
   name: string;
   username: string;
   email: string;
@@ -26,36 +27,36 @@ interface User {
 }
 
 interface Group {
-  id: number;
+  id: string;
   name: string;
   description?: string;
 }
 
 interface Balance {
-  id: number;
-  groupId: number | null;
-  user1Id: number;
-  user2Id: number;
+  id: string;
+  groupId: string | null;
+  user1Id: string;
+  user2Id: string;
   netAmount: string;
 }
 
 interface OptimizedTransaction {
-  from: number;
-  to: number;
+  from: string;
+  to: string;
   amount: string;
 }
 
 interface Category {
-  id: number;
+  id: string;
   name: string;
   icon: string;
 }
 
 interface ActivityLog {
-  id: number;
+  id: string;
   type: string;
   description: string;
-  expenseId?: number;
+  expenseId?: string;
   timestamp: string;
 }
 
@@ -65,6 +66,7 @@ export default function App() {
   const [users, setUsers] = useState<User[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [friends, setFriends] = useState<any[]>([]);
+  const [friendRequests, setFriendRequests] = useState<any[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
   const [balances, setBalances] = useState<Balance[]>([]);
@@ -89,17 +91,17 @@ export default function App() {
   // Form states
   const [expenseDesc, setExpenseDesc] = useState('');
   const [expenseAmount, setExpenseAmount] = useState('');
-  const [payerId, setPayerId] = useState<number | ''>('');
-  const [selectedCategoryId, setSelectedCategoryId] = useState<number | ''>('');
-  const [expenseGroupId, setExpenseGroupId] = useState<number | ''>('');
+  const [payerId, setPayerId] = useState<string | ''>('');
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | ''>('');
+  const [expenseGroupId, setExpenseGroupId] = useState<string | ''>('');
   const [splitType, setSplitType] = useState<'equal' | 'unequal'>('equal');
-  const [unequalSplits, setUnequalSplits] = useState<Record<number, string>>({});
+  const [unequalSplits, setUnequalSplits] = useState<Record<string, string>>({});
   const [receiptUrl, setReceiptUrl] = useState('');
   const [currency, setCurrency] = useState('USD');
   const [recurringType, setRecurringType] = useState('');
-  
+
   const [newGroupName, setNewGroupName] = useState('');
-  const [newGroupMembers, setNewGroupMembers] = useState<number[]>([]);
+  const [newGroupMembers, setNewGroupMembers] = useState<string[]>([]);
   const [newUserName, setNewUserName] = useState('');
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserUsername, setNewUserUsername] = useState('');
@@ -175,29 +177,24 @@ export default function App() {
     }
   }, [activeTab, selectedGroup]);
 
-  const [selectedExpenseId, setSelectedExpenseId] = useState<number | null>(null);
+  const [selectedExpenseId, setSelectedExpenseId] = useState<string | null>(null);
   const [expenseComments, setExpenseComments] = useState<any[]>([]);
   const [newComment, setNewComment] = useState('');
   const [isSettling, setIsSettling] = useState(false);
   const [settleAmount, setSettleAmount] = useState('');
-  const [settleToUserId, setSettleToUserId] = useState<number | null>(null);
+  const [settleToUserId, setSettleToUserId] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  const fetchComments = async (expenseId: number) => {
-    const res = await axios.get(`/api/expenses/${expenseId}/comments`);
-    setExpenseComments(Array.isArray(res.data) ? res.data : []);
+  const fetchComments = async (expenseId: string) => {
+    // Left empty. Real-time Firebase listeners handles most data.
   };
 
   const addComment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedExpenseId || !newComment || !currentUser) return;
     try {
-      await axios.post(`/api/expenses/${selectedExpenseId}/comments`, {
-        userId: currentUser.id,
-        text: newComment,
-      });
+      await FirebaseService.addComment(selectedExpenseId, currentUser.id, newComment);
       setNewComment('');
-      fetchComments(selectedExpenseId);
     } catch (err) {
       console.error(err);
     }
@@ -208,8 +205,8 @@ export default function App() {
     if (!currentUser || !settleToUserId || !settleAmount) return;
     setLoading(true);
     try {
-      await axios.post('/api/expenses', {
-        description: `Settlement to ${getUserName(settleToUserId)}`,
+      await FirebaseService.addExpense({
+        description: `Settlement to ${getUserName(String(settleToUserId))}`,
         amount: settleAmount,
         payerId: currentUser.id,
         splitType: 'unequal',
@@ -219,8 +216,6 @@ export default function App() {
       setIsSettling(false);
       setSettleAmount('');
       setSettleToUserId(null);
-      fetchUserSpecificData();
-      if (selectedGroup) fetchGroupData(selectedGroup.id);
     } catch (err) {
       console.error(err);
     } finally {
@@ -236,102 +231,79 @@ export default function App() {
 
   const fetchInitialData = async () => {
     try {
-      const [usersRes, groupsRes, catsRes] = await Promise.all([
-        axios.get('/api/users'),
-        axios.get('/api/groups'),
-        axios.get('/api/categories')
-      ]);
-      setUsers(Array.isArray(usersRes.data) ? usersRes.data : []);
-      setGroups(Array.isArray(groupsRes.data) ? groupsRes.data : []);
-      setCategories(Array.isArray(catsRes.data) ? catsRes.data : []);
+      const usersData = await FirebaseService.getAllUsers();
+      setUsers(usersData as any);
+      // Groups loaded via realtime listener
+      setCategories([
+        { id: '1', name: 'Housing', icon: 'Home' },
+        { id: '2', name: 'Food', icon: 'ShoppingCart' },
+        { id: '3', name: 'Transportation', icon: 'Car' },
+        { id: '4', name: 'Utilities', icon: 'Zap' },
+        { id: '5', name: 'Entertainment', icon: 'Film' },
+        { id: '6', name: 'Other', icon: 'MoreHorizontal' }
+      ] as any);
     } catch (err) {
       console.error('Failed to fetch initial data:', err);
-      setUsers([]);
-      setGroups([]);
-      setCategories([]);
     }
   };
 
-  const fetchUserSpecificData = async () => {
+  useEffect(() => {
     if (!currentUser) return;
-    try {
-      const [balRes, optRes, actRes, friendsRes, analyticsRes] = await Promise.all([
-        axios.get(`/api/balances?userId=${currentUser.id}`),
-        axios.get(`/api/optimize-settlement?userId=${currentUser.id}`),
-        axios.get(`/api/activities/${currentUser.id}`),
-        axios.get(`/api/friends/${currentUser.id}`),
-        axios.get(`/api/analytics/${currentUser.id}`)
-      ]);
-      setBalances(Array.isArray(balRes.data) ? balRes.data : []);
-      setOptimized(Array.isArray(optRes.data) ? optRes.data : []);
-      setActivities(Array.isArray(actRes.data) ? actRes.data : []);
-      setFriends(Array.isArray(friendsRes.data) ? friendsRes.data : []);
-      setAnalyticsData(Array.isArray(analyticsRes.data) ? analyticsRes.data : []);
-      fetchAllExpenses();
-    } catch (err) {
-      console.error('Failed to fetch user specific data:', err);
-    }
-  };
+    const unsub = FirebaseService.listenToUserSpecificData(currentUser.id, (data) => {
+      setFriends(data.friends);
+      setFriendRequests(data.requests);
+      setGroups(data.groups);
+      setAllExpenses(data.expenses);
+      setActivities(data.activities);
+      setBalances(data.balances);
+      setOptimized(data.optimized);
+    });
+    return () => unsub();
+  }, [currentUser]);
 
-  const fetchAllExpenses = async () => {
-    try {
-      const res = await axios.get('/api/expenses');
-      setAllExpenses(Array.isArray(res.data) ? res.data : []);
-    } catch (err) {
-      console.error('Failed to fetch all expenses:', err);
-    }
-  };
-
-  const fetchGroupData = async (groupId: number) => {
-    const [balRes, optRes, memRes] = await Promise.all([
-      axios.get(`/api/balances?groupId=${groupId}`),
-      axios.get(`/api/optimize-settlement?groupId=${groupId}`),
-      axios.get(`/api/groups/${groupId}/members`)
-    ]);
-    setBalances(Array.isArray(balRes.data) ? balRes.data : []);
-    setOptimized(Array.isArray(optRes.data) ? optRes.data : []);
-    setGroupMembers(Array.isArray(memRes.data) ? memRes.data : []);
-  };
+  const fetchUserSpecificData = async () => { /* Now handled by realtime listener */ };
+  const fetchAllExpenses = async () => { /* Now handled by realtime listener */ };
+  const fetchGroupData = async (groupId: string) => { /* Realtime listener covers everything */ };
 
   const addExpense = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!expenseAmount || !payerId || !expenseDesc) return;
+    if (!expenseAmount || !payerId || !expenseDesc || !currentUser) return;
 
     setLoading(true);
     try {
-      let splits: { userId: number; amount: string }[] = [];
+      let splits: { userId: string; amount: string }[] = [];
       const totalAmount = new Decimal(expenseAmount);
-      
-      const participants = expenseGroupId !== '' 
-        ? (expenseGroupId === 0 ? (currentUser ? [currentUser, ...friends] : []) : expenseGroupMembers) 
-        : (selectedGroup ? groupMembers : (currentUser ? [currentUser, ...friends] : []));
-      
+
+      const participants = expenseGroupId !== ''
+        ? (expenseGroupId === '0' ? [currentUser, ...friends] : expenseGroupMembers)
+        : (selectedGroup ? groupMembers : [currentUser, ...friends]);
+
       if (splitType === 'equal') {
         const perPerson = totalAmount.div(participants.length).toDecimalPlaces(2);
         let sum = new Decimal(0);
         splits = participants.map((u, i) => {
           if (i === participants.length - 1) {
-            return { userId: u.id, amount: totalAmount.minus(sum).toString() };
+            return { userId: String(u.id), amount: totalAmount.minus(sum).toString() };
           }
           sum = sum.plus(perPerson);
-          return { userId: u.id, amount: perPerson.toString() };
+          return { userId: String(u.id), amount: perPerson.toString() };
         });
       } else {
         splits = participants.map(u => ({
-          userId: u.id,
-          amount: unequalSplits[u.id] || '0',
+          userId: String(u.id),
+          amount: unequalSplits[String(u.id)] || '0',
         }));
       }
 
-      await axios.post('/api/expenses', {
+      await FirebaseService.addExpense({
         amount: expenseAmount,
         description: expenseDesc,
-        payerId: Number(payerId),
-        groupId: expenseGroupId || selectedGroup?.id,
-        categoryId: selectedCategoryId || undefined,
-        receiptUrl: receiptUrl || undefined,
+        payerId: String(payerId),
+        groupId: expenseGroupId || selectedGroup?.id || null,
+        categoryId: selectedCategoryId || null,
+        receiptUrl: receiptUrl || null,
         currency,
-        recurringType: recurringType || undefined,
+        recurringType: recurringType || null,
         splits,
       });
 
@@ -342,33 +314,29 @@ export default function App() {
       setReceiptUrl('');
       setCurrency('USD');
       setRecurringType('');
-      fetchUserSpecificData();
-      fetchAllExpenses();
-      if (selectedGroup) fetchGroupData(selectedGroup.id);
     } catch (err: any) {
       console.error(err);
-      const msg = err.response?.data?.error || 'Failed to add expense. Please check your inputs.';
-      alert(msg);
+      alert(err.message || 'Failed to add expense. Please check your inputs.');
     } finally {
       setLoading(false);
     }
   };
 
-  const settleDebt = async (from: number, to: number, amount: string) => {
+  const settleDebt = async (from: string, to: string, amount: string) => {
     setLoading(true);
     try {
-      await axios.post('/api/settle', {
+      await FirebaseService.addExpense({
+        description: `Settlement`,
+        amount: amount,
         payerId: from,
-        receiverId: to,
-        groupId: selectedGroup?.id,
-        amount,
+        splitType: 'unequal',
+        splits: [{ userId: to, amount: amount }],
+        isSettlement: true,
+        groupId: selectedGroup?.id || null
       });
-      fetchUserSpecificData();
-      if (selectedGroup) fetchGroupData(selectedGroup.id);
     } catch (err: any) {
       console.error(err);
-      const msg = err.response?.data?.error || 'Failed to record settlement.';
-      alert(msg);
+      alert('Failed to record settlement.');
     } finally {
       setLoading(false);
     }
@@ -379,18 +347,14 @@ export default function App() {
     if (!loginIdentifier || !loginPassword) return;
     setLoading(true);
     try {
-      const res = await axios.post('/api/users/login', { 
-        identifier: loginIdentifier.toLowerCase().trim(),
-        password: loginPassword
-      });
-      setCurrentUser(res.data);
+      const userData = await FirebaseService.login(loginIdentifier, loginPassword);
+      setCurrentUser(userData as any);
       setActiveTab('dashboard');
       setLoginIdentifier('');
       setLoginPassword('');
     } catch (err: any) {
       console.error(err);
-      const msg = err.response?.data?.error || 'Login failed. Please check your credentials.';
-      alert(msg);
+      alert(err.message || 'Login failed. Please check your credentials.');
     } finally {
       setLoading(false);
     }
@@ -402,23 +366,16 @@ export default function App() {
 
     setLoading(true);
     try {
-      const res = await axios.post('/api/users', {
-        name: newUserName,
-        email: newUserEmail,
-        username: newUserUsername.toLowerCase().trim(),
-        password: newUserPassword
-      });
-      setUsers([...users, res.data]);
+      const userData = await FirebaseService.createUser(newUserName, newUserEmail, newUserUsername, newUserPassword);
+      setCurrentUser(userData as any);
       setNewUserName('');
       setNewUserEmail('');
       setNewUserUsername('');
       setNewUserPassword('');
-      setCurrentUser(res.data);
       setActiveTab('dashboard');
     } catch (err: any) {
       console.error(err);
-      const msg = err.response?.data?.error || 'Failed to create user. Username or Email might already be in use.';
-      alert(msg);
+      alert(err.message || 'Failed to create user. Username or Email might already be in use.');
     } finally {
       setLoading(false);
     }
@@ -426,27 +383,22 @@ export default function App() {
 
   const createGroup = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newGroupName || newGroupMembers.length === 0) return;
+    if (!newGroupName || newGroupMembers.length === 0 || !currentUser) return;
     setLoading(true);
     try {
-      const res = await axios.post('/api/groups', {
-        name: newGroupName,
-        memberIds: [...newGroupMembers, currentUser?.id].filter(Boolean),
-      });
-      setGroups([...groups, res.data]);
+      await FirebaseService.createGroup(newGroupName, [...newGroupMembers, currentUser.id].filter(Boolean).map(String));
       setNewGroupName('');
       setNewGroupMembers([]);
       setActiveTab('dashboard');
     } catch (err: any) {
       console.error(err);
-      const msg = err.response?.data?.error || 'Failed to create group.';
-      alert(msg);
+      alert('Failed to create group.');
     } finally {
       setLoading(false);
     }
   };
 
-  const addFriend = async (friendId: number) => {
+  const addFriend = async (friendId: string) => {
     if (!currentUser) return;
     if (friendId === currentUser.id) {
       alert("You can't add yourself as a friend!");
@@ -454,16 +406,36 @@ export default function App() {
     }
     setLoading(true);
     try {
-      await axios.post('/api/friends', {
-        user1Id: currentUser.id,
-        user2Id: friendId,
-      });
-      fetchUserSpecificData();
+      await FirebaseService.sendFriendRequest(currentUser.id, friendId);
+      alert('Friend request sent!');
     } catch (err: any) {
       console.error(err);
-      const msg = err.response?.data?.error || 'Failed to add friend. They might already be your friend.';
-      alert(msg);
-      throw err; // Re-throw so caller can know it failed
+      alert(err.message || 'Failed to add friend. They might already be your friend or a request is pending.');
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const acceptFriendRequest = async (requestId: string) => {
+    setLoading(true);
+    try {
+      await FirebaseService.acceptFriendRequest(requestId);
+    } catch (err: any) {
+      console.error(err);
+      alert('Failed to accept request.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const rejectFriendRequest = async (requestId: string) => {
+    setLoading(true);
+    try {
+      await FirebaseService.rejectFriendRequest(requestId);
+    } catch (err: any) {
+      console.error(err);
+      alert('Failed to reject request.');
     } finally {
       setLoading(false);
     }
@@ -473,23 +445,20 @@ export default function App() {
     if (!currentUser || !username) return;
     setLoading(true);
     try {
-      const userRes = await axios.get(`/api/users/by-username/${username.toLowerCase().trim()}`);
-      const friendId = userRes.data.id;
-      await addFriend(friendId);
+      const user = await FirebaseService.getUserByUsername(username);
+      await addFriend(user.id);
       setFriendUsernameInput('');
     } catch (err: any) {
       console.error(err);
-      // If the error is from the /by-username/ endpoint, show "User not found"
-      if (err.config?.url?.includes('/by-username/')) {
+      if (err.message === 'User not found') {
         alert('User not found.');
       }
-      // If it's from addFriend, it already showed an alert, so we don't do anything else here.
     } finally {
       setLoading(false);
     }
   };
 
-  const getUserName = (id: number) => users.find(u => u.id === id)?.name || 'Unknown';
+  const getUserName = (id: string) => users.find(u => String(u.id) === String(id))?.name || 'Unknown';
 
   const totalOwed = Array.isArray(balances) ? balances.reduce((acc, b) => {
     if (!currentUser) return acc;
@@ -514,7 +483,7 @@ export default function App() {
   if (!currentUser) {
     return (
       <div className="min-h-screen bg-[#F8F9FA] dark:bg-[#121212] flex items-center justify-center p-4 font-sans transition-colors">
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className="max-w-md w-full bg-white dark:bg-[#1E1E1E] rounded-3xl shadow-xl p-10 space-y-8 border border-gray-100 dark:border-gray-800 transition-colors"
@@ -528,13 +497,13 @@ export default function App() {
           </div>
 
           <div className="flex bg-gray-100 dark:bg-gray-800 p-1 rounded-xl">
-            <button 
+            <button
               onClick={() => setAuthMode('login')}
               className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${authMode === 'login' ? 'bg-white dark:bg-gray-700 shadow-sm text-[#5BC5A7]' : 'text-gray-500'}`}
             >
               Login
             </button>
-            <button 
+            <button
               onClick={() => setAuthMode('signup')}
               className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${authMode === 'signup' ? 'bg-white dark:bg-gray-700 shadow-sm text-[#5BC5A7]' : 'text-gray-500'}`}
             >
@@ -549,8 +518,8 @@ export default function App() {
                   <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Email or Username</label>
                   <div className="relative">
                     <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       placeholder="avinash@gmail.com"
                       value={loginIdentifier}
                       onChange={e => setLoginIdentifier(e.target.value)}
@@ -563,8 +532,8 @@ export default function App() {
                   <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Password</label>
                   <div className="relative">
                     <Settings className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                    <input 
-                      type="password" 
+                    <input
+                      type="password"
                       placeholder="••••••••"
                       value={loginPassword}
                       onChange={e => setLoginPassword(e.target.value)}
@@ -573,7 +542,7 @@ export default function App() {
                   </div>
                 </div>
 
-                <button 
+                <button
                   type="submit"
                   disabled={loading || !loginIdentifier || !loginPassword}
                   className="w-full py-4 bg-[#5BC5A7] text-white font-bold rounded-2xl shadow-lg shadow-[#5BC5A7]/20 hover:bg-[#4eb094] hover:-translate-y-0.5 active:translate-y-0 transition-all disabled:opacity-50 disabled:translate-y-0"
@@ -587,8 +556,8 @@ export default function App() {
                   <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Full Name</label>
                   <div className="relative">
                     <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       placeholder="John Doe"
                       value={newUserName}
                       onChange={e => setNewUserName(e.target.value)}
@@ -601,8 +570,8 @@ export default function App() {
                   <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Username</label>
                   <div className="relative">
                     <Hash className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       placeholder="johndoe123"
                       value={newUserUsername}
                       onChange={e => setNewUserUsername(e.target.value)}
@@ -615,8 +584,8 @@ export default function App() {
                   <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Email Address</label>
                   <div className="relative">
                     <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                    <input 
-                      type="email" 
+                    <input
+                      type="email"
                       placeholder="john@example.com"
                       value={newUserEmail}
                       onChange={e => setNewUserEmail(e.target.value)}
@@ -629,8 +598,8 @@ export default function App() {
                   <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Password</label>
                   <div className="relative">
                     <Settings className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                    <input 
-                      type="password" 
+                    <input
+                      type="password"
                       placeholder="Min 6 characters"
                       value={newUserPassword}
                       onChange={e => setNewUserPassword(e.target.value)}
@@ -639,7 +608,7 @@ export default function App() {
                   </div>
                 </div>
 
-                <button 
+                <button
                   type="submit"
                   disabled={loading || !newUserName || !newUserEmail || !newUserUsername || !newUserPassword}
                   className="w-full py-4 bg-[#5BC5A7] text-white font-bold rounded-2xl shadow-lg shadow-[#5BC5A7]/20 hover:bg-[#4eb094] hover:-translate-y-0.5 active:translate-y-0 transition-all disabled:opacity-50 disabled:translate-y-0"
@@ -664,7 +633,7 @@ export default function App() {
           <div className="w-8 h-8 bg-[#5BC5A7] rounded-lg flex items-center justify-center text-white font-bold text-lg">F</div>
           <span className="font-bold dark:text-white">FairShare</span>
         </div>
-        <button 
+        <button
           onClick={() => setIsSidebarOpen(!isSidebarOpen)}
           className="p-2 text-gray-500 dark:text-gray-400"
         >
@@ -675,7 +644,7 @@ export default function App() {
       {/* Sidebar Overlay */}
       <AnimatePresence>
         {isSidebarOpen && (
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -696,43 +665,43 @@ export default function App() {
         </div>
 
         <nav className="flex-1 px-4 space-y-1">
-          <button 
+          <button
             onClick={() => { setActiveTab('dashboard'); setSelectedGroup(null); setIsSidebarOpen(false); }}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${activeTab === 'dashboard' ? 'bg-[#5BC5A7] text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400'}`}
           >
             <Home className="w-5 h-5" /> Dashboard
           </button>
-          <button 
+          <button
             onClick={() => { setActiveTab('recent'); setSelectedGroup(null); setIsSidebarOpen(false); }}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${activeTab === 'recent' ? 'bg-[#5BC5A7] text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400'}`}
           >
             <Activity className="w-5 h-5" /> Recent Activity
           </button>
-          <button 
+          <button
             onClick={() => { setActiveTab('expenses'); setSelectedGroup(null); setIsSidebarOpen(false); }}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${activeTab === 'expenses' ? 'bg-[#5BC5A7] text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400'}`}
           >
             <Filter className="w-5 h-5" /> All Expenses
           </button>
-          <button 
+          <button
             onClick={() => { setActiveTab('groups'); setSelectedGroup(null); setIsSidebarOpen(false); }}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${activeTab === 'groups' ? 'bg-[#5BC5A7] text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400'}`}
           >
             <Users className="w-5 h-5" /> Groups
           </button>
-          <button 
+          <button
             onClick={() => { setActiveTab('friends'); setSelectedGroup(null); setIsSidebarOpen(false); }}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${activeTab === 'friends' ? 'bg-[#5BC5A7] text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400'}`}
           >
             <UserIcon className="w-5 h-5" /> Friends
           </button>
-          <button 
+          <button
             onClick={() => { setActiveTab('analytics'); setSelectedGroup(null); setIsSidebarOpen(false); }}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${activeTab === 'analytics' ? 'bg-[#5BC5A7] text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400'}`}
           >
             <BarChartIcon className="w-5 h-5" /> Analytics
           </button>
-          <button 
+          <button
             onClick={() => { setActiveTab('accounts'); setSelectedGroup(null); setIsSidebarOpen(false); }}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${activeTab === 'accounts' ? 'bg-[#5BC5A7] text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400'}`}
           >
@@ -741,7 +710,7 @@ export default function App() {
         </nav>
 
         <div className="px-6 py-4 border-t border-gray-100 dark:border-gray-800">
-          <button 
+          <button
             onClick={() => setDarkMode(!darkMode)}
             className="w-full flex items-center justify-between px-4 py-2 bg-gray-50 dark:bg-gray-800 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-all"
           >
@@ -765,7 +734,7 @@ export default function App() {
                 <p className="text-sm font-bold truncate dark:text-white">{currentUser.name}</p>
                 <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">@{currentUser.username}</p>
               </div>
-              <button 
+              <button
                 onClick={() => setCurrentUser(null)}
                 className="p-2 text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"
                 title="Logout"
@@ -780,18 +749,18 @@ export default function App() {
       {/* Main Content */}
       <main className="flex-1 lg:ml-64 p-4 lg:p-8 bg-[#F8F9FA] dark:bg-[#121212] min-h-screen transition-colors pt-20 lg:pt-8">
         <div className="max-w-4xl mx-auto">
-          
+
           {/* Header */}
           <header className="flex items-center justify-between mb-8">
             <h1 className="text-3xl font-bold capitalize dark:text-white">{selectedGroup ? selectedGroup.name : activeTab}</h1>
             <div className="flex gap-3">
-              <button 
+              <button
                 onClick={() => setActiveTab('expenses')}
                 className="px-6 py-2 bg-[#FF652F] text-white font-bold rounded-md hover:bg-[#e55a2a] transition-colors shadow-sm"
               >
                 Add an expense
               </button>
-              <button 
+              <button
                 onClick={() => setIsSettling(true)}
                 className="px-6 py-2 bg-[#5BC5A7] text-white font-bold rounded-md hover:bg-[#4eb094] transition-colors shadow-sm"
               >
@@ -842,7 +811,7 @@ export default function App() {
                           </div>
                         </div>
                         {currentUser?.id === opt.from && (
-                          <button 
+                          <button
                             onClick={() => {
                               setSettleToUserId(opt.to);
                               setSettleAmount(opt.amount);
@@ -879,7 +848,7 @@ export default function App() {
                             <p className="font-bold dark:text-gray-200 truncate">{getUserName(otherId)}</p>
                             <p className="text-xs text-[#FF652F]">you owe <span className="font-bold">${amt.toString()}</span></p>
                           </div>
-                          <button 
+                          <button
                             onClick={() => {
                               setSettleToUserId(otherId);
                               setSettleAmount(amt.toString());
@@ -934,7 +903,7 @@ export default function App() {
                     <p className="text-xs text-gray-400">{new Date(act.timestamp).toLocaleString()}</p>
                   </div>
                   {act.expenseId && (
-                    <button 
+                    <button
                       onClick={() => setSelectedExpenseId(act.expenseId!)}
                       className="p-2 text-gray-400 hover:text-[#5BC5A7] dark:hover:text-[#5BC5A7] transition-colors"
                       title="View comments"
@@ -954,8 +923,8 @@ export default function App() {
                 <form onSubmit={createGroup} className="space-y-4 max-w-md">
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-gray-400 uppercase">Group Name</label>
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       placeholder="e.g. Apartment 402"
                       value={newGroupName}
                       onChange={e => setNewGroupName(e.target.value)}
@@ -965,9 +934,9 @@ export default function App() {
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-gray-400 uppercase">Add Members</label>
                     <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto p-2 border border-gray-100 dark:border-gray-700 rounded-lg">
-                      {users.filter(u => u.id !== currentUser?.id).map(u => (
+                      {Array.isArray(friends) && friends.map(u => (
                         <label key={u.id} className="flex items-center gap-2 p-2 hover:bg-gray-50 dark:hover:bg-gray-800 rounded cursor-pointer">
-                          <input 
+                          <input
                             type="checkbox"
                             checked={newGroupMembers.includes(u.id)}
                             onChange={e => {
@@ -981,7 +950,7 @@ export default function App() {
                       ))}
                     </div>
                   </div>
-                  <button 
+                  <button
                     disabled={loading}
                     className="w-full py-3 bg-[#5BC5A7] text-white font-bold rounded-lg shadow-md hover:bg-[#4eb094] transition-all disabled:opacity-50"
                   >
@@ -1020,15 +989,15 @@ export default function App() {
                 <div className="flex gap-4 max-w-md">
                   <div className="flex-1 relative">
                     <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       placeholder="Enter Friend's Username"
                       value={friendUsernameInput}
                       onChange={e => setFriendUsernameInput(e.target.value)}
                       className="w-full pl-12 pr-4 py-3 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 outline-none focus:border-[#5BC5A7] dark:text-white transition-all"
                     />
                   </div>
-                  <button 
+                  <button
                     onClick={() => addFriendByUsername(friendUsernameInput)}
                     disabled={loading || !friendUsernameInput}
                     className="px-6 py-3 bg-[#5BC5A7] text-white font-bold rounded-xl hover:bg-[#4eb094] transition-all disabled:opacity-50"
@@ -1039,30 +1008,40 @@ export default function App() {
                 <p className="mt-4 text-sm text-gray-400">Ask your friend for their unique username (found in their profile).</p>
               </div>
 
-              <div className="bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-gray-800 rounded-xl shadow-sm p-8 transition-colors">
-                <h2 className="text-xl font-bold mb-6 dark:text-white">Suggested Friends</h2>
-                <div className="grid grid-cols-2 gap-4">
-                  {Array.isArray(users) && users.filter(u => u.id !== currentUser?.id && Array.isArray(friends) && !friends.some(f => f.id === u.id)).map(u => (
-                    <div key={u.id} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                          <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${u.name}`} alt="avatar" />
+              {friendRequests.length > 0 && (
+                <div className="bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-gray-800 rounded-xl shadow-sm p-8 transition-colors">
+                  <h2 className="text-xl font-bold mb-6 dark:text-white">Pending Requests</h2>
+                  <div className="grid grid-cols-2 gap-4">
+                    {friendRequests.map(req => (
+                      <div key={req.requestId} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                            <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${req.name}`} alt="avatar" />
+                          </div>
+                          <div>
+                            <p className="font-bold text-sm dark:text-white">{req.name}</p>
+                            <p className="text-xs text-gray-400">@{req.username}</p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="font-bold text-sm dark:text-white">{u.name}</p>
-                          <p className="text-xs text-gray-400">{u.email}</p>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => acceptFriendRequest(req.requestId)}
+                            className="px-4 py-2 bg-[#5BC5A7] text-white text-sm font-bold rounded-lg hover:bg-[#4eb094] transition-colors"
+                          >
+                            Accept
+                          </button>
+                          <button
+                            onClick={() => rejectFriendRequest(req.requestId)}
+                            className="px-4 py-2 bg-white dark:bg-gray-800 text-gray-500 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                          >
+                            Decline
+                          </button>
                         </div>
                       </div>
-                      <button 
-                        onClick={() => addFriend(u.id)}
-                        className="p-2 bg-white dark:bg-gray-700 text-[#5BC5A7] border border-[#5BC5A7] rounded-lg hover:bg-green-50 dark:hover:bg-gray-600 transition-colors"
-                      >
-                        <Plus className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div className="bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-gray-800 rounded-xl shadow-sm p-8 transition-colors">
                 <h2 className="text-xl font-bold mb-6 dark:text-white">Your Friends</h2>
@@ -1087,212 +1066,212 @@ export default function App() {
             <>
               <div className="bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-gray-800 rounded-xl shadow-sm p-8 transition-colors">
                 <form onSubmit={addExpense} className="space-y-8 max-w-md mx-auto">
-                <div className="text-center space-y-4">
-                  <div className="flex items-center gap-4 justify-center">
-                    <div className="w-16 h-16 bg-gray-100 dark:bg-gray-800 rounded-xl flex items-center justify-center text-gray-400 border-2 border-dashed border-gray-200 dark:border-gray-700">
-                      <Tag className="w-8 h-8" />
+                  <div className="text-center space-y-4">
+                    <div className="flex items-center gap-4 justify-center">
+                      <div className="w-16 h-16 bg-gray-100 dark:bg-gray-800 rounded-xl flex items-center justify-center text-gray-400 border-2 border-dashed border-gray-200 dark:border-gray-700">
+                        <Tag className="w-8 h-8" />
+                      </div>
+                      <div className="flex-1 text-left">
+                        <input
+                          type="text"
+                          placeholder="Enter a description"
+                          value={expenseDesc}
+                          onChange={e => setExpenseDesc(e.target.value)}
+                          className="w-full text-2xl font-bold border-b-2 border-gray-100 dark:border-gray-800 focus:border-[#5BC5A7] outline-none py-1 transition-colors bg-transparent dark:text-white"
+                        />
+                      </div>
                     </div>
-                    <div className="flex-1 text-left">
-                      <input 
-                        type="text" 
-                        placeholder="Enter a description"
-                        value={expenseDesc}
-                        onChange={e => setExpenseDesc(e.target.value)}
-                        className="w-full text-2xl font-bold border-b-2 border-gray-100 dark:border-gray-800 focus:border-[#5BC5A7] outline-none py-1 transition-colors bg-transparent dark:text-white"
+                    <div className="flex items-center gap-4 justify-center">
+                      <span className="text-4xl font-light text-gray-300">$</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        placeholder="0.00"
+                        value={expenseAmount}
+                        onChange={e => setExpenseAmount(e.target.value)}
+                        className="text-5xl font-bold w-48 outline-none border-b-2 border-gray-100 dark:border-gray-800 focus:border-[#5BC5A7] transition-colors bg-transparent dark:text-white"
                       />
                     </div>
                   </div>
-                  <div className="flex items-center gap-4 justify-center">
-                    <span className="text-4xl font-light text-gray-300">$</span>
-                    <input 
-                      type="number" 
-                      step="0.01"
-                      placeholder="0.00"
-                      value={expenseAmount}
-                      onChange={e => setExpenseAmount(e.target.value)}
-                      className="text-5xl font-bold w-48 outline-none border-b-2 border-gray-100 dark:border-gray-800 focus:border-[#5BC5A7] transition-colors bg-transparent dark:text-white"
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-gray-400 uppercase">Paid By</label>
+                      <select
+                        value={payerId}
+                        onChange={e => setPayerId(Number(e.target.value))}
+                        className="w-full p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700 outline-none focus:border-[#5BC5A7] dark:text-white"
+                      >
+                        <option value="">Select Payer</option>
+                        {(expenseGroupId !== ''
+                          ? (expenseGroupId === 0 ? (currentUser ? [currentUser, ...friends] : []) : expenseGroupMembers)
+                          : (selectedGroup ? groupMembers : (currentUser ? [currentUser, ...friends] : []))).map(u => (
+                            <option key={u.id} value={u.id}>{u.name}</option>
+                          ))}
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-gray-400 uppercase">Group (Optional)</label>
+                      <select
+                        value={expenseGroupId}
+                        onChange={e => setExpenseGroupId(Number(e.target.value))}
+                        className="w-full p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700 outline-none focus:border-[#5BC5A7] dark:text-white"
+                      >
+                        <option value="">No Group (Split with all)</option>
+                        {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-gray-400 uppercase">Category</label>
+                      <select
+                        value={selectedCategoryId}
+                        onChange={e => setSelectedCategoryId(Number(e.target.value))}
+                        className="w-full p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700 outline-none focus:border-[#5BC5A7] dark:text-white"
+                      >
+                        <option value="">General</option>
+                        {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-gray-400 uppercase flex items-center gap-1">
+                        <Globe className="w-3 h-3" /> Currency
+                      </label>
+                      <select
+                        value={currency}
+                        onChange={e => setCurrency(e.target.value)}
+                        className="w-full p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700 outline-none focus:border-[#5BC5A7]"
+                      >
+                        <option value="USD">USD ($)</option>
+                        <option value="EUR">EUR (€)</option>
+                        <option value="GBP">GBP (£)</option>
+                        <option value="INR">INR (₹)</option>
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-gray-400 uppercase flex items-center gap-1">
+                        <Repeat className="w-3 h-3" /> Recurring
+                      </label>
+                      <select
+                        value={recurringType}
+                        onChange={e => setRecurringType(e.target.value)}
+                        className="w-full p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700 outline-none focus:border-[#5BC5A7]"
+                      >
+                        <option value="">One-time</option>
+                        <option value="daily">Daily</option>
+                        <option value="weekly">Weekly</option>
+                        <option value="monthly">Monthly</option>
+                        <option value="yearly">Yearly</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-gray-400 uppercase flex items-center gap-1">
+                      <Camera className="w-3 h-3" /> Receipt URL
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="https://example.com/receipt.jpg"
+                      value={receiptUrl}
+                      onChange={e => setReceiptUrl(e.target.value)}
+                      className="w-full p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700 outline-none focus:border-[#5BC5A7]"
                     />
                   </div>
-                </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-gray-400 uppercase">Paid By</label>
-                    <select 
-                      value={payerId}
-                      onChange={e => setPayerId(Number(e.target.value))}
-                      className="w-full p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700 outline-none focus:border-[#5BC5A7] dark:text-white"
-                    >
-                      <option value="">Select Payer</option>
-                      {(expenseGroupId !== '' 
-                        ? (expenseGroupId === 0 ? (currentUser ? [currentUser, ...friends] : []) : expenseGroupMembers) 
-                        : (selectedGroup ? groupMembers : (currentUser ? [currentUser, ...friends] : []))).map(u => (
-                        <option key={u.id} value={u.id}>{u.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-gray-400 uppercase">Group (Optional)</label>
-                    <select 
-                      value={expenseGroupId}
-                      onChange={e => setExpenseGroupId(Number(e.target.value))}
-                      className="w-full p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700 outline-none focus:border-[#5BC5A7] dark:text-white"
-                    >
-                      <option value="">No Group (Split with all)</option>
-                      {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-                    </select>
-                  </div>
-                </div>
+                  <div className="space-y-4">
+                    <div className="flex bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
+                      <button
+                        type="button"
+                        onClick={() => setSplitType('equal')}
+                        className={`flex-1 py-2 text-sm font-bold rounded-md transition-all ${splitType === 'equal' ? 'bg-white dark:bg-gray-700 shadow-sm text-[#5BC5A7]' : 'text-gray-500'}`}
+                      >
+                        Equally
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSplitType('unequal')}
+                        className={`flex-1 py-2 text-sm font-bold rounded-md transition-all ${splitType === 'unequal' ? 'bg-white dark:bg-gray-700 shadow-sm text-[#5BC5A7]' : 'text-gray-500'}`}
+                      >
+                        Unequally
+                      </button>
+                    </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-gray-400 uppercase">Category</label>
-                    <select 
-                      value={selectedCategoryId}
-                      onChange={e => setSelectedCategoryId(Number(e.target.value))}
-                      className="w-full p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700 outline-none focus:border-[#5BC5A7] dark:text-white"
-                    >
-                      <option value="">General</option>
-                      {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-gray-400 uppercase flex items-center gap-1">
-                      <Globe className="w-3 h-3" /> Currency
-                    </label>
-                    <select 
-                      value={currency}
-                      onChange={e => setCurrency(e.target.value)}
-                      className="w-full p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700 outline-none focus:border-[#5BC5A7]"
-                    >
-                      <option value="USD">USD ($)</option>
-                      <option value="EUR">EUR (€)</option>
-                      <option value="GBP">GBP (£)</option>
-                      <option value="INR">INR (₹)</option>
-                    </select>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-gray-400 uppercase flex items-center gap-1">
-                      <Repeat className="w-3 h-3" /> Recurring
-                    </label>
-                    <select 
-                      value={recurringType}
-                      onChange={e => setRecurringType(e.target.value)}
-                      className="w-full p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700 outline-none focus:border-[#5BC5A7]"
-                    >
-                      <option value="">One-time</option>
-                      <option value="daily">Daily</option>
-                      <option value="weekly">Weekly</option>
-                      <option value="monthly">Monthly</option>
-                      <option value="yearly">Yearly</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-gray-400 uppercase flex items-center gap-1">
-                    <Camera className="w-3 h-3" /> Receipt URL
-                  </label>
-                  <input 
-                    type="text" 
-                    placeholder="https://example.com/receipt.jpg"
-                    value={receiptUrl}
-                    onChange={e => setReceiptUrl(e.target.value)}
-                    className="w-full p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700 outline-none focus:border-[#5BC5A7]"
-                  />
-                </div>
-
-                <div className="space-y-4">
-                  <div className="flex bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
-                    <button 
-                      type="button"
-                      onClick={() => setSplitType('equal')}
-                      className={`flex-1 py-2 text-sm font-bold rounded-md transition-all ${splitType === 'equal' ? 'bg-white dark:bg-gray-700 shadow-sm text-[#5BC5A7]' : 'text-gray-500'}`}
-                    >
-                      Equally
-                    </button>
-                    <button 
-                      type="button"
-                      onClick={() => setSplitType('unequal')}
-                      className={`flex-1 py-2 text-sm font-bold rounded-md transition-all ${splitType === 'unequal' ? 'bg-white dark:bg-gray-700 shadow-sm text-[#5BC5A7]' : 'text-gray-500'}`}
-                    >
-                      Unequally
-                    </button>
+                    {splitType === 'unequal' && (
+                      <div className="space-y-3 p-4 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700">
+                        {(expenseGroupId !== ''
+                          ? (expenseGroupId === 0 ? (currentUser ? [currentUser, ...friends] : []) : expenseGroupMembers)
+                          : (selectedGroup ? groupMembers : (currentUser ? [currentUser, ...friends] : []))).map(u => (
+                            <div key={u.id} className="flex items-center justify-between">
+                              <span className="text-sm font-medium dark:text-white">{u.name}</span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-gray-300">$</span>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={unequalSplits[u.id] || ''}
+                                  onChange={e => setUnequalSplits({ ...unequalSplits, [u.id]: e.target.value })}
+                                  className="w-20 p-1 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-right text-sm dark:text-white"
+                                />
+                              </div>
+                            </div>
+                          ))}
+                      </div>
+                    )}
                   </div>
 
-                  {splitType === 'unequal' && (
-                    <div className="space-y-3 p-4 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700">
-                      {(expenseGroupId !== '' 
-                        ? (expenseGroupId === 0 ? (currentUser ? [currentUser, ...friends] : []) : expenseGroupMembers) 
-                        : (selectedGroup ? groupMembers : (currentUser ? [currentUser, ...friends] : []))).map(u => (
-                        <div key={u.id} className="flex items-center justify-between">
-                          <span className="text-sm font-medium dark:text-white">{u.name}</span>
-                          <div className="flex items-center gap-2">
-                            <span className="text-gray-300">$</span>
-                            <input 
-                              type="number"
-                              step="0.01"
-                              value={unequalSplits[u.id] || ''}
-                              onChange={e => setUnequalSplits({...unequalSplits, [u.id]: e.target.value})}
-                              className="w-20 p-1 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-right text-sm dark:text-white"
-                            />
+                  <button
+                    disabled={loading}
+                    className="w-full py-4 bg-[#5BC5A7] text-white font-bold text-xl rounded-xl shadow-lg hover:bg-[#4eb094] transition-all disabled:opacity-50"
+                  >
+                    {loading ? 'Saving...' : 'Save Expense'}
+                  </button>
+                </form>
+              </div>
+
+              <div className="mt-12 space-y-6">
+                <h2 className="text-xl font-bold dark:text-white">Recent Expenses</h2>
+                <div className="bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-gray-800 rounded-xl shadow-sm overflow-hidden transition-colors">
+                  {allExpenses.length === 0 ? (
+                    <p className="p-8 text-center text-gray-400">No expenses found.</p>
+                  ) : (
+                    allExpenses.map((exp, i) => (
+                      <div key={exp.id} className={`p-4 flex items-center gap-4 ${i !== allExpenses.length - 1 ? 'border-b border-gray-50 dark:border-gray-800' : ''}`}>
+                        <div className="w-12 h-12 bg-gray-100 dark:bg-gray-800 rounded-xl flex items-center justify-center text-[#5BC5A7] font-bold">
+                          {exp.category?.icon || <DollarSign className="w-6 h-6" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold dark:text-gray-200 truncate">{exp.description}</p>
+                          <p className="text-xs text-gray-400">
+                            Paid by <span className="font-medium text-gray-600 dark:text-gray-300">{exp.payer?.name}</span>
+                            {exp.group && <> in <span className="font-medium text-gray-600 dark:text-gray-300">{exp.group.name}</span></>}
+                          </p>
+                          <p className="text-[10px] text-gray-400 mt-1">{new Date(exp.timestamp).toLocaleString()}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-bold text-lg dark:text-white">${exp.amount}</p>
+                          <div className="flex items-center gap-2 justify-end">
+                            <button
+                              onClick={() => setSelectedExpenseId(exp.id)}
+                              className="p-1 text-gray-400 hover:text-[#5BC5A7] transition-colors"
+                              title="View comments"
+                            >
+                              <MessageSquare className="w-4 h-4" />
+                            </button>
                           </div>
                         </div>
-                      ))}
-                    </div>
+                      </div>
+                    ))
                   )}
                 </div>
-
-                <button 
-                  disabled={loading}
-                  className="w-full py-4 bg-[#5BC5A7] text-white font-bold text-xl rounded-xl shadow-lg hover:bg-[#4eb094] transition-all disabled:opacity-50"
-                >
-                  {loading ? 'Saving...' : 'Save Expense'}
-                </button>
-              </form>
-            </div>
-
-            <div className="mt-12 space-y-6">
-              <h2 className="text-xl font-bold dark:text-white">Recent Expenses</h2>
-              <div className="bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-gray-800 rounded-xl shadow-sm overflow-hidden transition-colors">
-                {allExpenses.length === 0 ? (
-                  <p className="p-8 text-center text-gray-400">No expenses found.</p>
-                ) : (
-                  allExpenses.map((exp, i) => (
-                    <div key={exp.id} className={`p-4 flex items-center gap-4 ${i !== allExpenses.length - 1 ? 'border-b border-gray-50 dark:border-gray-800' : ''}`}>
-                      <div className="w-12 h-12 bg-gray-100 dark:bg-gray-800 rounded-xl flex items-center justify-center text-[#5BC5A7] font-bold">
-                        {exp.category?.icon || <DollarSign className="w-6 h-6" />}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-bold dark:text-gray-200 truncate">{exp.description}</p>
-                        <p className="text-xs text-gray-400">
-                          Paid by <span className="font-medium text-gray-600 dark:text-gray-300">{exp.payer?.name}</span>
-                          {exp.group && <> in <span className="font-medium text-gray-600 dark:text-gray-300">{exp.group.name}</span></>}
-                        </p>
-                        <p className="text-[10px] text-gray-400 mt-1">{new Date(exp.timestamp).toLocaleString()}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-bold text-lg dark:text-white">${exp.amount}</p>
-                        <div className="flex items-center gap-2 justify-end">
-                          <button 
-                            onClick={() => setSelectedExpenseId(exp.id)}
-                            className="p-1 text-gray-400 hover:text-[#5BC5A7] transition-colors"
-                            title="View comments"
-                          >
-                            <MessageSquare className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ))
-                )}
               </div>
-            </div>
-          </>
-        )}
+            </>
+          )}
 
           {activeTab === 'analytics' && (
             <div className="space-y-8">
@@ -1341,7 +1320,7 @@ export default function App() {
                       }, {})).map(([name, value]) => ({ name, value }))}>
                         <XAxis dataKey="name" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
                         <YAxis stroke="#888888" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `$${value}`} />
-                        <Tooltip cursor={{fill: 'transparent'}} />
+                        <Tooltip cursor={{ fill: 'transparent' }} />
                         <Bar dataKey="value" fill="#FF652F" radius={[4, 4, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
@@ -1377,8 +1356,8 @@ export default function App() {
                 <form onSubmit={createUser} className="space-y-4 max-w-md">
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-gray-400 uppercase">Full Name</label>
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       placeholder="e.g. John Doe"
                       value={newUserName}
                       onChange={e => setNewUserName(e.target.value)}
@@ -1387,15 +1366,15 @@ export default function App() {
                   </div>
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-gray-400 uppercase">Email Address</label>
-                    <input 
-                      type="email" 
+                    <input
+                      type="email"
                       placeholder="e.g. john@example.com"
                       value={newUserEmail}
                       onChange={e => setNewUserEmail(e.target.value)}
                       className="w-full p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700 outline-none focus:border-[#5BC5A7] dark:text-white"
                     />
                   </div>
-                  <button 
+                  <button
                     disabled={loading}
                     className="w-full py-3 bg-[#5BC5A7] text-white font-bold rounded-lg shadow-md hover:bg-[#4eb094] transition-all disabled:opacity-50"
                   >
@@ -1435,7 +1414,7 @@ export default function App() {
       <AnimatePresence>
         {isSettling && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9 }}
@@ -1451,13 +1430,13 @@ export default function App() {
               <form onSubmit={settleUp} className="space-y-6">
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-gray-400 uppercase">Settle with</label>
-                  <select 
+                  <select
                     value={settleToUserId || ''}
                     onChange={e => setSettleToUserId(Number(e.target.value))}
                     className="w-full p-4 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 outline-none focus:border-[#5BC5A7] dark:text-white"
                   >
                     <option value="">Select a friend</option>
-                    {users.filter(u => u.id !== currentUser?.id).map(u => (
+                    {Array.isArray(friends) && friends.map(u => (
                       <option key={u.id} value={u.id}>{u.name}</option>
                     ))}
                   </select>
@@ -1467,8 +1446,8 @@ export default function App() {
                   <label className="text-xs font-bold text-gray-400 uppercase">Amount</label>
                   <div className="relative">
                     <span className="absolute left-4 top-1/2 -translate-y-1/2 text-2xl font-bold text-gray-300">$</span>
-                    <input 
-                      type="number" 
+                    <input
+                      type="number"
                       step="0.01"
                       placeholder="0.00"
                       value={settleAmount}
@@ -1478,7 +1457,7 @@ export default function App() {
                   </div>
                 </div>
 
-                <button 
+                <button
                   disabled={loading || !settleToUserId || !settleAmount}
                   className="w-full py-4 bg-[#5BC5A7] text-white font-bold text-lg rounded-xl shadow-lg hover:bg-[#4eb094] transition-all disabled:opacity-50"
                 >
@@ -1494,7 +1473,7 @@ export default function App() {
       <AnimatePresence>
         {selectedExpenseId && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9 }}
@@ -1506,7 +1485,7 @@ export default function App() {
                   <X className="w-5 h-5 text-gray-400" />
                 </button>
               </div>
-              
+
               {selectedExpenseId && allExpenses.find(e => e.id === selectedExpenseId) && (
                 <div className="p-6 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-800">
                   <div className="flex items-center justify-between mb-2">
@@ -1529,9 +1508,8 @@ export default function App() {
                       <div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0">
                         <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${c.user.name}`} alt="avatar" />
                       </div>
-                      <div className={`max-w-[80%] p-3 rounded-2xl text-sm ${
-                        c.userId === currentUser?.id ? 'bg-[#5BC5A7] text-white rounded-tr-none' : 'bg-gray-100 dark:bg-gray-800 dark:text-gray-200 rounded-tl-none'
-                      }`}>
+                      <div className={`max-w-[80%] p-3 rounded-2xl text-sm ${c.userId === currentUser?.id ? 'bg-[#5BC5A7] text-white rounded-tr-none' : 'bg-gray-100 dark:bg-gray-800 dark:text-gray-200 rounded-tl-none'
+                        }`}>
                         <p className="font-bold text-[10px] mb-1 opacity-70">{c.user.name}</p>
                         <p>{c.text}</p>
                         <p className="text-[10px] mt-1 opacity-50 text-right">{new Date(c.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
@@ -1542,14 +1520,14 @@ export default function App() {
               </div>
 
               <form onSubmit={addComment} className="p-4 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-[#181818] flex gap-2">
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   placeholder="Write a comment..."
                   value={newComment}
                   onChange={e => setNewComment(e.target.value)}
                   className="flex-1 p-3 bg-white dark:bg-[#1E1E1E] rounded-xl border border-gray-200 dark:border-gray-700 outline-none focus:border-[#5BC5A7] dark:text-white"
                 />
-                <button 
+                <button
                   disabled={!newComment}
                   className="p-3 bg-[#5BC5A7] text-white rounded-xl hover:bg-[#4eb094] transition-all disabled:opacity-50"
                 >
